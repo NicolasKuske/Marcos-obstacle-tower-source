@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;            // Added for CSV file writing
 using UnityEngine;
 using Unity.MLAgents;
 using Unity.MLAgents.Sensors;
-
 
 /// <summary>
 /// Agent logic. Responsible for moving agent, assigning rewards, and going between floors.
@@ -13,14 +13,14 @@ public class ObstacleTowerAgent : Agent
 {
     public FloorBuilder floorBuilder;
     public KeyController keyController;
-    public Transform cameraPivot; //the object that contains the camera
+    public Transform cameraPivot; // the object that contains the camera
     public Camera cameraAgent;
     public Camera cameraPlayer;
     public Canvas canvasPlayer;
     public float cameraFollowSpeed;
     public bool denseReward;
 
-    [Header("Episode Time Config")] 
+    [Header("Episode Time Config")]
     public int floorTimeBonus;
     public int floorTimeStart;
     public int orbBonus;
@@ -33,12 +33,18 @@ public class ObstacleTowerAgent : Agent
     private int episodeTime;
     private bool runTimer;
 
-    //Events
-    public event Action CompletedFloorAction; //event that will fire if the agent completes the floor
+    // Events
+    public event Action CompletedFloorAction; // event that will fire if the agent completes the floor
 
     private List<Collision> _collisions = new List<Collision>();
 
     [HideInInspector] public UIController uIController;
+
+    // --- New Fields for CSV Logging and Raycast ---
+    private StreamWriter logFile;  // For writing CSV logs
+    private int stepNumber = 0;    // To count steps
+    public float maxDetectionDistance = 1000f; // Maximum raycast distance (error term)
+    // --- End New Fields ---
 
     public void SetTraining()
     {
@@ -62,8 +68,23 @@ public class ObstacleTowerAgent : Agent
         uIController = FindObjectOfType<UIController>();
     }
 
+    // --- New Start() Method to Open CSV File ---
+    private void Start()
+    {
+        logFile = new StreamWriter("AgentLog.csv", false);
+        logFile.WriteLine("Step,Distance"); // Write CSV header
+    }
+    // --- End New Start() Method ---
+
     public override void CollectObservations(VectorSensor sensor)
     {
+        // --- New Code to Measure and Log Raycast Distance (logging only) ---
+        stepNumber++; // Increment step count
+        float distance = GetDistanceStraightAhead(); // Get distance via raycast
+        logFile.WriteLine($"{stepNumber},{distance}");
+        logFile.Flush();
+        // --- End New Code ---
+
         sensor.AddOneHotObservation(keyController.currentNumberOfKeys, 6);
         sensor.AddObservation(episodeTime);
         sensor.AddObservation(floorBuilder.floorNumber);
@@ -72,6 +93,21 @@ public class ObstacleTowerAgent : Agent
         sensor.AddObservation(agentRb.position.z);
         sensor.AddObservation(agentRb.rotation.eulerAngles.y); // Yaw (rotation around the y-axis)
     }
+
+    // --- New Method: GetDistanceStraightAhead ---
+    private float GetDistanceStraightAhead()
+    {
+        Vector3 rayOrigin = transform.position + Vector3.up * 1.5f; // Start ray at head level
+        Vector3 forwardDirection = transform.forward; // Agent's forward direction
+        RaycastHit hit;
+
+        if (Physics.Raycast(rayOrigin, forwardDirection, out hit, maxDetectionDistance))
+        {
+            return hit.distance; // Return the distance to the hit object
+        }
+        return maxDetectionDistance; // Return max distance if nothing is hit
+    }
+    // --- End New Method ---
 
     private void PickUpKey(GameObject key)
     {
@@ -98,14 +134,14 @@ public class ObstacleTowerAgent : Agent
             Debug.LogError("There was an error instantiating the floor. Leaving play-mode");
             UnityEditor.EditorApplication.isPlaying = false;
 #else
-         Application.Quit();
+            Application.Quit();
 #endif
         }
     }
 
     private void CompletedLevel()
     {
-        CompletedFloorAction?.Invoke(); //fire the event
+        CompletedFloorAction?.Invoke(); // Fire the event
 
         AddReward(1f);
         floorBuilder.IncrementFloorNumber();
@@ -142,7 +178,6 @@ public class ObstacleTowerAgent : Agent
             {
                 uIController.ShowKillScreen();
             }
-
             EndEpisode();
             return true;
         }
@@ -201,7 +236,7 @@ public class ObstacleTowerAgent : Agent
         var jumpAction = Mathf.FloorToInt(act[2]);
         var lateralAction = Mathf.FloorToInt(act[3]);
 
-        switch (rotateAction) //THIS ROTATES THE CAMERA, NOT THE PLAYER
+        switch (rotateAction) // THIS ROTATES THE CAMERA, NOT THE PLAYER
         {
             case 1:
                 rotateDir = -Vector3.up;
@@ -211,7 +246,7 @@ public class ObstacleTowerAgent : Agent
                 break;
         }
 
-        //ROTATE CAM
+        // ROTATE CAM
         cameraPivot.transform.position =
             Vector3.Lerp(cameraPivot.transform.position, agentRb.position, cameraFollowSpeed);
         cameraPivot.Rotate(180f * Time.deltaTime * rotateDir);
@@ -313,7 +348,6 @@ public class ObstacleTowerAgent : Agent
             {
                 uIController.ShowKillScreen();
             }
-
             EndEpisode();
         }
     }
@@ -343,12 +377,12 @@ public class ObstacleTowerAgent : Agent
         uIController.floorText.text = floorBuilder.floorNumber.ToString();
         uIController.timeText.text = episodeTime.ToString();
     }
-    
+
     public void ReparentAgent()
     {
         if (transform.parent != floorBuilder.transform)
         {
-            transform.SetParent(floorBuilder.transform); //in case parented to something else
+            transform.SetParent(floorBuilder.transform); // in case parented to something else
         }
     }
 
@@ -365,7 +399,7 @@ public class ObstacleTowerAgent : Agent
         {
             Debug.Log("You reached floor: " + floorBuilder.floorNumber);
         }
-        
+
         ReparentAgent();
         episodeTime = floorTimeStart;
         var perspective = floorBuilder.environmentParameters.agentPerspective;
@@ -385,4 +419,14 @@ public class ObstacleTowerAgent : Agent
     {
         return episodeTime;
     }
+
+    // --- New Method: Close the CSV File on Application Quit ---
+    private void OnApplicationQuit()
+    {
+        if (logFile != null)
+        {
+            logFile.Close();
+        }
+    }
+    // --- End New Method ---
 }
