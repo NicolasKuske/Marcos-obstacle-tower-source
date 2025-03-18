@@ -1,3 +1,8 @@
+# Marcos-obstacle-tower-source
+Obstacle Tower Challenge from Unity, adapted from MarcoMeter and me for 168*168 resolution and X,Y, Rot added to Agent VectorObs
+
+---------------------
+
 # Obstacle Tower (Source code) 
 
 ![alt text](banner.png "Obstacle Tower")
