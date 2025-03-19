@@ -1,5 +1,5 @@
 # Marcos-obstacle-tower-source
-Obstacle Tower Challenge from Unity, adapted from MarcoMeter and me for 168*168 resolution and X,Y, Rot added to Agent VectorObs
+Obstacle Tower Challenge from Unity, adapted from MarcoMeter and me for 168*168 resolution and X,Y, rotation of Agent as well as distance from Agent in cameradirection to next object added to VectorObs
 
 ---------------------
 
