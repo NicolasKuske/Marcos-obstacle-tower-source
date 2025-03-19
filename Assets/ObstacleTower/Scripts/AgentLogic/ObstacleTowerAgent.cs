@@ -4,7 +4,6 @@ using UnityEngine;
 using Unity.MLAgents;
 using Unity.MLAgents.Sensors;
 
-
 /// <summary>
 /// Agent logic. Responsible for moving agent, assigning rewards, and going between floors.
 /// </summary>
@@ -13,32 +12,35 @@ public class ObstacleTowerAgent : Agent
 {
     public FloorBuilder floorBuilder;
     public KeyController keyController;
-    public Transform cameraPivot; //the object that contains the camera
+    public Transform cameraPivot; // The object that contains the camera
     public Camera cameraAgent;
     public Camera cameraPlayer;
     public Canvas canvasPlayer;
     public float cameraFollowSpeed;
     public bool denseReward;
 
-    [Header("Episode Time Config")] 
+    [Header("Episode Time Config")]
     public int floorTimeBonus;
     public int floorTimeStart;
     public int orbBonus;
 
-    private AgentAnimator agentAnimator; // A reference to the ThirdPersonCharacter on the object
-    private Vector3 dirToGo; // the dir the char should go
-    private Vector3 rotateDir; // the dir the camera should rotate
+    private AgentAnimator agentAnimator; // Reference to the character's animator
+    private Vector3 dirToGo; // The direction the character should move
+    private Vector3 rotateDir; // The direction the camera should rotate
     public Rigidbody agentRb;
     private bool jumping;
     private int episodeTime;
     private bool runTimer;
 
-    //Events
-    public event Action CompletedFloorAction; //event that will fire if the agent completes the floor
+    // Event fired when the agent completes a floor
+    public event Action CompletedFloorAction;
 
     private List<Collision> _collisions = new List<Collision>();
 
     [HideInInspector] public UIController uIController;
+
+    // Maximum distance to check for obstacles with the raycast (now set to 1000)
+    public float maxRayDistance = 1000f;
 
     public void SetTraining()
     {
@@ -64,13 +66,53 @@ public class ObstacleTowerAgent : Agent
 
     public override void CollectObservations(VectorSensor sensor)
     {
+        // Existing observations
         sensor.AddOneHotObservation(keyController.currentNumberOfKeys, 6);
         sensor.AddObservation(episodeTime);
         sensor.AddObservation(floorBuilder.floorNumber);
-
         sensor.AddObservation(agentRb.position.x);
         sensor.AddObservation(agentRb.position.z);
-        sensor.AddObservation(agentRb.rotation.eulerAngles.y); // Yaw (rotation around the y-axis)
+        sensor.AddObservation(agentRb.rotation.eulerAngles.y); // Yaw
+
+        // New observation: Distance to the next object in the direction of the camera.
+        float distanceToObstacle = GetDistanceToObstacle();
+        sensor.AddObservation(distanceToObstacle);
+    }
+
+    /// <summary>
+    /// Returns the distance from the agent to the next object in the direction of the camera.
+    /// </summary>
+    private float GetDistanceToObstacle()
+    {
+        // Use the agent's position as the ray origin.
+        // If the camera is offset from the agent and you need to start the ray there, replace with cameraAgent.transform.position.
+
+        //Vector3 origin = transform.position;
+        Vector3 origin = transform.position + Vector3.up * 1.5f;
+
+        //Vector3 origin = cameraAgent.transform.position;
+
+        //Vector3 direction = cameraAgent.transform.forward;
+        // direction.y = 0f;
+        // direction.Normalize();
+
+        // Create a horizontal direction using only the yaw (rotation around the y-axis).
+        Vector3 direction = Quaternion.Euler(0, cameraAgent.transform.eulerAngles.y, 0) * Vector3.forward;
+
+
+        // Perform the raycast
+        if (Physics.Raycast(origin, direction, out RaycastHit hit, maxRayDistance))
+        {
+            // Debug visualization: red line indicates a hit.
+            Debug.DrawRay(origin, direction * hit.distance, Color.red);
+            return hit.distance;
+        }
+        else
+        {
+            // Debug visualization: green line indicates no hit.
+            Debug.DrawRay(origin, direction * maxRayDistance, Color.green);
+            return maxRayDistance;
+        }
     }
 
     private void PickUpKey(GameObject key)
@@ -98,14 +140,14 @@ public class ObstacleTowerAgent : Agent
             Debug.LogError("There was an error instantiating the floor. Leaving play-mode");
             UnityEditor.EditorApplication.isPlaying = false;
 #else
-         Application.Quit();
+            Application.Quit();
 #endif
         }
     }
 
     private void CompletedLevel()
     {
-        CompletedFloorAction?.Invoke(); //fire the event
+        CompletedFloorAction?.Invoke(); // Fire the event
 
         AddReward(1f);
         floorBuilder.IncrementFloorNumber();
@@ -142,7 +184,6 @@ public class ObstacleTowerAgent : Agent
             {
                 uIController.ShowKillScreen();
             }
-
             EndEpisode();
             return true;
         }
@@ -201,7 +242,7 @@ public class ObstacleTowerAgent : Agent
         var jumpAction = Mathf.FloorToInt(act[2]);
         var lateralAction = Mathf.FloorToInt(act[3]);
 
-        switch (rotateAction) //THIS ROTATES THE CAMERA, NOT THE PLAYER
+        switch (rotateAction) // This rotates the camera, not the player
         {
             case 1:
                 rotateDir = -Vector3.up;
@@ -211,7 +252,7 @@ public class ObstacleTowerAgent : Agent
                 break;
         }
 
-        //ROTATE CAM
+        // Rotate the camera
         cameraPivot.transform.position =
             Vector3.Lerp(cameraPivot.transform.position, agentRb.position, cameraFollowSpeed);
         cameraPivot.Rotate(180f * Time.deltaTime * rotateDir);
@@ -313,7 +354,6 @@ public class ObstacleTowerAgent : Agent
             {
                 uIController.ShowKillScreen();
             }
-
             EndEpisode();
         }
     }
@@ -343,12 +383,12 @@ public class ObstacleTowerAgent : Agent
         uIController.floorText.text = floorBuilder.floorNumber.ToString();
         uIController.timeText.text = episodeTime.ToString();
     }
-    
+
     public void ReparentAgent()
     {
         if (transform.parent != floorBuilder.transform)
         {
-            transform.SetParent(floorBuilder.transform); //in case parented to something else
+            transform.SetParent(floorBuilder.transform); // In case parented to something else
         }
     }
 
@@ -365,7 +405,7 @@ public class ObstacleTowerAgent : Agent
         {
             Debug.Log("You reached floor: " + floorBuilder.floorNumber);
         }
-        
+
         ReparentAgent();
         episodeTime = floorTimeStart;
         var perspective = floorBuilder.environmentParameters.agentPerspective;
